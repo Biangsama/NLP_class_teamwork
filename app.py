@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, jsonify
 import imapclient
 import pyzmail
+import pprint
+import chardet
 
 app = Flask(__name__)
 
@@ -27,32 +29,55 @@ def extract_emails():
         return jsonify({'error': '不支持的邮箱类型'})
 
     try:
-        print("email:",email)
-        print("password:", password)
         # 登录服务器
         imapObj = imapclient.IMAPClient(imap_server, ssl=True)
         imapObj.login(email, password)
 
         # 选择INBOX文件夹
+        imapObj.id_({"name": "IMAPClient", "version": "2.1.0"})
         imapObj.select_folder('INBOX', readonly=True)
 
         # 查询所有已读邮件的UID
         UIDs = imapObj.search(['SEEN'])
-        print(UIDs)
         emails = []
 
         # 遍历每个UID，获取邮件信息
         for uid in UIDs:
             rawMessages = imapObj.fetch([uid], ['BODY[]', 'INTERNALDATE'])
             message = pyzmail.PyzMessage.factory(rawMessages[uid][b'BODY[]'])
-            print(f'发件人: {message.get_addresses("from")}')
-            print(f'收件人: {message.get_addresses("to")}')
+
+            # 获取邮件正文
+            email_body = None
             if message.text_part:
-                print(f'正文: {message.text_part.get_payload().decode(message.text_part.charset)}')
+                raw_payload = message.text_part.get_payload()
+                detected = chardet.detect(raw_payload)
+                charset = detected['encoding'] if detected['encoding'] else 'utf-8'
+                try:
+                    email_body = raw_payload.decode(charset, errors='replace')
+                except Exception:
+                    # 如果 chardet 检测失败，尝试使用其他常见编码
+                    try:
+                        email_body = raw_payload.decode('utf-8', errors='replace')
+                    except Exception:
+                        email_body = raw_payload.decode('latin-1', errors='replace')
+            elif message.html_part:
+                raw_payload = message.html_part.get_payload()
+                detected = chardet.detect(raw_payload)
+                charset = detected['encoding'] if detected['encoding'] else 'utf-8'
+                try:
+                    email_body = raw_payload.decode(charset, errors='replace')
+                except Exception:
+                    # 如果 chardet 检测失败，尝试使用其他常见编码
+                    try:
+                        email_body = raw_payload.decode('utf-8', errors='replace')
+                    except Exception:
+                        email_body = raw_payload.decode('latin-1', errors='replace')
+
             email_info = {
                 'sender': message.get_addresses("from"),
                 'subject': message.get_subject(),
-                'date': rawMessages[uid][b'INTERNALDATE'].strftime('%Y-%m-%d %H:%M:%S')
+                'date': rawMessages[uid][b'INTERNALDATE'].strftime('%Y-%m-%d %H:%M:%S'),
+                'body': email_body,
             }
             emails.append(email_info)
 

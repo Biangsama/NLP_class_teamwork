@@ -3,42 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>垃圾邮件检测网页</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        #menu {
-            width: 200px;
-            float: left;
-            border-right: 1px solid #ccc;
-            padding-right: 10px;
-        }
-        #menu a {
-            display: block;
-            padding: 10px;
-            text-decoration: none;
-            color: #333;
-        }
-        #menu a:hover {
-            background-color: #f0f0f0;
-        }
-        #content {
-            margin-left: 220px;
-            padding: 20px;
-        }
-        .tab {
-            display: none;
-        }
-        .active {
-            display: block;
-        }
-    </style>
+    <title >垃圾邮件检测网页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index_test.css') }}">
 </head>
 <body>
-
 <div id="menu">
     <a href="#" onclick="showTab('emailScraper')">邮箱内容爬取</a>
     <a href="#" onclick="showTab('modelSelect')">模型选择训练</a>
@@ -48,14 +16,18 @@
 
 <div id="content">
     <div id="emailScraper" class="tab active">
-        <h2>邮箱内容爬取</h2>
+        <h2 style="text-align: center;">邮箱内容爬取</h2>
         <form id="emailForm">
-            <label for="email">邮箱账号：</label>
-            <input type="text" id="email" name="email" required><br><br>
-    
-            <label for="password">密码：</label>
-            <input type="password" id="password" name="password" required><br><br>
-    
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="email">邮箱账号：</label>
+                    <input type="text" id="email" name="email" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">密码：</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+            </div>
             <label for="emailType">选择邮箱类型：</label>
             <select id="emailType" name="emailType">
                 <option value="qq">QQ邮箱</option>
@@ -63,25 +35,42 @@
                 <option value="gmail">Gmail</option>
                 <option value="outlook">Outlook邮箱</option>
             </select><br><br>
-    
-            <button type="button" onclick="extractEmail()">提取邮件</button>
+            <div class="button-container">
+                <button type="button" onclick="extractEmail()" class="custom-button">提取邮件</button>
+            </div>
         </form>
     
         <h3>邮箱内容</h3>
         <table border="1" width="100%">
             <thead>
                 <tr>
-                    <th>选择</th>
                     <th>发送人</th>
                     <th>主题</th>
                     <th>日期</th>
+                    <th>详情</th>
                 </tr>
             </thead>
             <tbody id="emailContent">
                 <!-- 提取的邮件内容将显示在这里 -->
             </tbody>
         </table>
-        <button type="button" onclick="saveSelectedEmails()">保存选中邮件</button>
+        <div id="emailModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-button" onclick="closeModal()">&times;</span>
+                <h3 id="modalSubject">邮件主题</h3>
+                <p id="modalSender">发件人：</p>
+                <div id="modalBody">邮件内容...</div>
+            </div>
+        </div>
+        <div id="paginationContainer" style="text-align: center; margin-top: 20px;">
+            <span id="totalEmails" style="margin-right: 20px;">总共 0 条邮件</span>
+            <button type="button" onclick="prevPage()">上一页</button>
+            <span id="currentPage">1</span> / <span id="totalPages">1</span>
+            <button type="button" onclick="nextPage()">下一页</button>
+        </div>        
+        <div class="button-container">
+            <button type="button" onclick="saveSelectedEmails()" class="custom-button">保存以上邮件</button>
+        </div>        
     </div>
     <div id="modelSelect" class="tab">
         <h2>模型选择训练</h2>
@@ -97,73 +86,6 @@
     </div>
 </div>
 
-<script>
-    function extractEmail() {
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-        const emailType = document.getElementById('emailType').value;
-
-        fetch('/extract_emails', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ email, password, emailType })
-        })
-        .then(response => response.json())
-        .then(data => {
-            const tbody = document.getElementById('emailContent');
-            tbody.innerHTML = ''; // 清空之前的内容
-
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-
-            data.emails.forEach(email => {
-                const row = tbody.insertRow();
-                row.insertCell(0).innerHTML = '<input type="checkbox" class="email-checkbox">';
-                row.insertCell(1).innerText = email.sender[0][1]; // 发件人名称
-                row.insertCell(2).innerText = email.subject; // 邮件主题
-                row.insertCell(3).innerText = email.date; // 邮件日期
-            });
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('提取邮件时出现错误，请重试。');
-        });
-    }
-
-    function saveSelectedEmails() {
-        const checkboxes = document.querySelectorAll('.email-checkbox:checked');
-        const selectedEmails = [];
-
-        checkboxes.forEach(checkbox => {
-            const row = checkbox.closest('tr');
-            const sender = row.cells[1].innerText;
-            const subject = row.cells[2].innerText;
-            const date = row.cells[3].innerText;
-
-            selectedEmails.push({ sender, subject, date });
-        });
-
-        if (selectedEmails.length > 0) {
-            console.log('保存邮件:', selectedEmails);
-            alert('已保存选中邮件到数据库！');
-        } else {
-            alert('请先选择要保存的邮件。');
-        }
-    }
-
-    function showTab(tabId) {
-        let tabs = document.querySelectorAll('.tab');
-        tabs.forEach(function(tab) {
-            tab.classList.remove('active');
-        });
-
-        document.getElementById(tabId).classList.add('active');
-    }
-</script>
-
+<script src="{{ url_for('static', filename='js/index.js') }}"></script>
 </body>
 </html>

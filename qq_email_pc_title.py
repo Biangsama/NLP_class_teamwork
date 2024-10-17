@@ -1,3 +1,5 @@
+# 该脚本通过Selenium和Requests实现对网易邮箱网页端的模拟登录，并从邮箱中提取邮件内容。
+# 使用Selenium模拟浏览器操作登录邮箱，获取会话ID（sid），然后使用Requests通过HTTP POST请求获取邮箱中的邮件信息，最终打印邮件的发件人、主题等信息​(qq_email_pc_title)。
 import time,re,requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By

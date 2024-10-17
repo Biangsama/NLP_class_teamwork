@@ -1,4 +1,5 @@
-
+# 与163_email_imap.py类似，qq_email_imap.py用于通过IMAP协议连接QQ邮箱，从INBOX文件夹中提取已读邮件的信息。
+# 功能包括登录IMAP服务器、列出文件夹、查找已读邮件的UID、提取邮件内容等​(qq_email_imap)。
 import imapclient
 import pyzmail
 import pprint
