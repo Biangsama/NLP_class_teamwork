@@ -72,9 +72,50 @@
             <button type="button" onclick="saveSelectedEmails()" class="custom-button">保存以上邮件</button>
         </div>        
     </div>
-    <div id="modelSelect" class="tab">
+        <div id="modelSelect" class="tab">
         <h2>模型选择训练</h2>
         <p>在这里展示模型选择训练的相关信息和功能。</p>
+
+        <!-- 模型选择 -->
+        <div>
+            <label for="taskType">选择任务类型：</label>
+            <select id="taskType" name="taskType" onchange="updateModelOptions()">
+                <option value="" disabled selected>请选择</option>
+                <option value="title">邮件标题识别</option>
+                <option value="content">邮件内容识别</option>
+            </select>
+        </div>
+        <div>
+            <h2></h2>
+        </div>
+        <div id="modelTypeContainer" style="display: none;">
+            <label for="modelType">选择模型类型：</label>
+            <select id="modelType" name="modelType">
+                <option value="" disabled selected>请选择</option>
+            </select>
+        </div>
+
+        <div class="button-container" style="margin-top: 20px;">
+            <button type="button" onclick="startTraining()" id="startTrainingButton" >开始训练</button>
+        </div>
+
+        <!-- 训练进度展示框 -->
+        <div id="progressContainer" style="margin-top: 20px; display: none;">
+            <h3>训练进度</h3>
+            <progress id="trainingProgress" value="0" max="100"></progress>
+            <span id="progressText">0%</span>
+        </div>
+
+            <!-- 评估参数展示框 -->
+        <div id="evaluationMetrics" style="margin-top: 20px; display: none;">
+            <h3>模型评估参数</h3>
+            <p>准确率: <span id="accuracy"></span></p>
+            <p>精确率: <span id="precision"></span></p>
+            <p>召回率: <span id="recall"></span></p>
+            <p>F1-score: <span id="f1Score"></span></p>
+            <h4>混淆矩阵:</h4>
+            <canvas id="confusionMatrixCanvas" width="300" height="300"></canvas>
+        </div>
     </div>
     <div id="modelComparison" class="tab">
         <h2>模型数据对比</h2>
