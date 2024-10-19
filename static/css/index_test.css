@@ -1,0 +1,252 @@
+/* styles.css */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+    color: #333;
+}
+
+#menu {
+    width: 220px;
+    position: fixed;
+    left: -220px; /* 默认隐藏在左侧 */
+    transition: left 0.3s; /* 平滑过渡效果 */
+    height: 100vh;
+    border-right: 1px solid #ccc;
+    padding-right: 20px;
+    background-color: #ffffff;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+#menu:hover {
+    left: 0; /* 当鼠标悬浮时显示菜单 */
+}
+
+#menu a {
+    display: block;
+    padding: 15px;
+    text-decoration: none;
+    color: #333;
+    font-weight: bold;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+#menu a:hover {
+    background-color: #007bff;
+    color: #ffffff;
+}
+
+#content {
+    margin-left: 40px; /* 调整内容的初始位置，避免被菜单遮挡 */
+    padding: 40px;
+    transition: margin-left 0.3s; /* 平滑过渡效果 */
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    max-width: 90%;
+    margin-top: 20px;
+}
+
+#menu:hover + #content {
+    margin-left: 280px; /* 鼠标悬浮时调整内容的位置 */
+}
+
+.tab {
+    display: none;
+}
+
+.active {
+    display: block;
+}
+
+form label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+form input, form select {
+    width: 45%;
+    padding: 10px;
+    margin-bottom: 20px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+form button {
+    background-color: #007bff;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+form button:hover {
+    background-color: #0056b3;
+}
+
+h2 {
+    color: #007bff;
+    text-align: center;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+table th, table td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+}
+
+table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+button {
+    background-color: #28a745;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin-top: 20px;
+}
+
+button:hover {
+    background-color: #218838;
+}
+
+.email-checkbox {
+    cursor: pointer;
+}
+
+.input-row {
+    display: flex;
+    gap: 20px; /* 设置输入框之间的间距 */
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.input-group {
+    flex: 1;
+}
+
+.input-group label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.input-group input {
+    width: 90%;
+    padding: 10px;
+    margin-bottom: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+/* 模态框的整体背景样式 */
+.modal {
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 模态框内容样式 */
+.modal-content {
+    background-color: #fefefe;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 60%;
+    max-width: 800px;  /* 设置最大宽度 */
+    max-height: 80vh;  /* 设置最大高度，防止内容过多导致弹窗过长 */
+    overflow-y: auto;  /* 当内容超出时显示滚动条 */
+    border-radius: 8px;
+    position: relative;  /* 使子元素能够相对于模态框内容进行定位 */
+}
+
+/* 关闭按钮样式 */
+.close-button {
+    color: #FFF;
+    position: fixed;  
+    right: 20%;
+    top: 10%;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 3;  /* 确保关闭按钮在模态框内容上方 */
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+}
+
+/* 设置按钮所在单元格的样式，使按钮居中 */
+.details-cell {
+    display: flex;
+    justify-content: center;  /* 水平居中 */
+    align-items: center;  /* 垂直居中 */
+}
+
+/* 修改按钮样式 */
+.view-button {
+    background-color: #007bff;
+    color: #ffffff;
+    border: none;
+    padding: 5px 10px;
+    font-size: 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    display: inline-block;  /* 确保按钮在 flex 环境中可正确显示 */
+    margin: auto;  /* 保证按钮在单元格中居中 */
+}
+
+.view-button:hover {
+    background-color: #0056b3;
+}
+
+/* 按钮容器样式，确保容器中的按钮居中 */
+.button-container {
+    display: flex;
+    justify-content: center;  /* 水平居中 */
+    align-items: center;       /* 垂直居中 */
+    margin-top: 20px;          /* 距离其他内容的间距 */
+}
+
+/* 按钮的样式 */
+.custom-button {
+    background-color: #007bff;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    display: inline-block;
+}
+
+.custom-button:hover {
+    background-color: #0056b3;
+}
