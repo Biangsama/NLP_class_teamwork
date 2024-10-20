@@ -4,6 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title >垃圾邮件检测网页</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        #menu {
+            width: 200px;
+            float: left;
+            border-right: 1px solid #ccc;
+            padding-right: 10px;
+        }
+        #menu a {
+            display: block;
+            padding: 10px;
+            text-decoration: none;
+            color: #333;
+        }
+        #menu a:hover {
+            background-color: #f0f0f0;
+        }
+        #content {
+            margin-left: 220px;
+            padding: 20px;
+        }
+        .tab {
+            display: none;
+        }
+        .active {
+            display: block;
+        }
+         .form-container {
+            display: flex;
+            justify-content: space-between; /* 左右分布 */
+            margin: 20px; /* 添加一些边距 */
+        }
+
+        .form-group {
+            flex: 1; /* 每个输入框占据相同的宽度 */
+            margin-right: 20px; /* 添加右侧边距 */
+        }
+
+        /* 去掉最后一个元素的右边距 */
+        .form-group:last-child {
+            margin-right: 0;
+        }
+
+    </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index_test.css') }}">
 </head>
 <body>
@@ -123,10 +171,179 @@
     </div>
     <div id="spamDetection" class="tab">
         <h2>垃圾邮件识别</h2>
-        <p>在这里展示垃圾邮件识别的相关信息和功能。</p>
+              <h1>邮件检测</h1>
+    <form id="spamForm" onsubmit="return false">  <!-- 添加onsubmit事件 -->
+        <div class="form-container">
+        <div class="form-group">
+            <label for="input_text">输入邮箱内容:</label><br>
+            <textarea name="input_text" rows="4" cols="50"></textarea><br><br>
+        </div>
+
+        <div class="form-group">
+            <label for="email_subject">输入邮箱标题:</label><br>
+            <textarea name="email_subject" rows="4" cols="50"></textarea><br><br>
+        </div>
+    </div>
+
+    <div class="form-container">
+        <div class="form-group">
+            <label for="file">上传文件:</label><br>
+            <input type="file" name="file" accept=".txt,.json"><br><br>
+        </div>
+
+        <div class="form-group">
+            <label for="email_file">上传文件:</label><br>
+            <input type="file" name="email_file" accept=".txt,.json"><br><br>
+        </div>
+    </div>
+
+    <div class="form-container">
+        <div class="form-group">
+            <label for="select1">选择模型:</label><br>
+            <select name="select1" id="select1">
+                <option value="option1">Bert</option>
+                <option value="option2">CNN</option>
+            </select><br><br>
+        </div>
+
+        <div class="form-group">
+            <label for="select2">选择模型:</label><br>
+            <select name="select2" id="select2">
+                <option value="option1">贝叶斯</option>
+                <option value="option2">chinese-electra</option>
+            </select><br><br>
+        </div>
+    </div>
+    <div class="form-container">
+        <div class="form-group">
+            <input type="submit" id="submitBtn1" value="提交邮箱内容">
+        </div>
+        <div class="form-group">
+            <input type="submit" id="submitBtn2" value="提交邮箱标题">
+        </div>
+    </div>
+
+    </form>
+    <div id="predictionResult">
+        {% if prediction %}
+            <h2>预测内容:</h2>
+            <p>{{ input_text }}</p>>
+            <h2>预测结果:</h2>
+            <p>{{ prediction }}</p>
+        {% endif %}
+    </div>
     </div>
 </div>
 
 <script src="{{ url_for('static', filename='js/index.js') }}"></script>
+<script>
+
+document.getElementById('submitBtn1').addEventListener('click', function(event) {
+    submitSpamForm(event, 'select1'); // 传递事件和选择框ID
+});
+document.getElementById('submitBtn2').addEventListener('click', function(event) {
+    submitSpamForm2(event,'select2'); // 只传递事件
+});
+
+function submitSpamForm(event, selectId) {
+    event.preventDefault(); // 阻止表单默认提交
+    var selectElement = document.getElementById(selectId);
+    var selectedValue = selectElement.value;
+
+    const formData = new FormData(document.getElementById('spamForm'));
+    const emailContent = formData.get('input_text');
+
+    if (selectedValue === "option1") {
+        console.log("Bert model selected");
+        fetch('/submit_spam', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+           .then(data => {
+        const predictionResultDiv = document.getElementById('predictionResult');
+        predictionResultDiv.innerHTML = ''; // 清空以前的内容
+
+
+        data.prediction.forEach(item => {
+            predictionResultDiv.innerHTML += `<h2>预测内容:</h2><p>${item.content}</p>`; // 显示预测内容
+            predictionResultDiv.innerHTML += `<h2>邮件标签:</h2><p>${item.label}</p>`; // 显示邮件标签
+        });
+    })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    } else if (selectedValue === "option2") {
+        fetch('/submit_spam_CNN', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+           .then(data => {
+        const predictionResultDiv = document.getElementById('predictionResult');
+        predictionResultDiv.innerHTML = ''; // 清空以前的内容
+
+
+        data.prediction.forEach(item => {
+            predictionResultDiv.innerHTML += `<h2>预测内容:</h2><p>${item.content}</p>`; // 显示预测内容
+            predictionResultDiv.innerHTML += `<h2>邮件标签:</h2><p>${item.label}</p>`; // 显示邮件标签
+        });
+    })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+}
+
+function submitSpamForm2(event,selectId) {
+    event.preventDefault(); // 阻止表单默认提交
+    var selectElement = document.getElementById(selectId);
+    var selectedValue = selectElement.value;
+
+    const formData = new FormData(document.getElementById('spamForm'));
+    const emailSubject = formData.get('email_subject');
+
+if (selectedValue === "option1") {
+        console.log("Bert model selected");
+        fetch('/submit_spam_title', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+            .then(data => {
+        const predictionResultDiv = document.getElementById('predictionResult');
+        predictionResultDiv.innerHTML = ''; // 清空以前的内容
+
+
+        data.prediction.forEach(item => {
+            predictionResultDiv.innerHTML += `<h2>预测内容:</h2><p>${item.content}</p>`; // 显示预测内容
+            predictionResultDiv.innerHTML += `<h2>邮件标签:</h2><p>${item.label}</p>`; // 显示邮件标签
+        });
+    })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    } else if (selectedValue === "option2") {
+        fetch('/submit_spam_c_e', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+           .then(data => {
+        const predictionResultDiv = document.getElementById('predictionResult');
+        predictionResultDiv.innerHTML = ''; // 清空以前的内容
+
+
+        data.prediction.forEach(item => {
+            predictionResultDiv.innerHTML += `<h2>预测内容:</h2><p>${item.content}</p>`; // 显示预测内容
+            predictionResultDiv.innerHTML += `<h2>邮件标签:</h2><p>${item.label}</p>`; // 显示邮件标签
+        });
+    })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+}
+</script>
 </body>
 </html>

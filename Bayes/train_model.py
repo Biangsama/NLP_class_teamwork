@@ -84,6 +84,31 @@ class RecognizerMail:
 
         return labels
 
+import json
+
+
+def extract_email_data(json_file_path):
+    # 初始化三个空列表来存储数据
+    dates = []
+    subjects = []
+    bodies = []
+
+    # 读取 JSON 文件
+    with open(json_file_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)  # 将 JSON 文件内容加载到 Python 对象中
+
+        # 遍历每一封邮件
+        for email in data:
+            dates.append(email.get("Date"))  # 获取 Date，并添加到 dates 列表
+            subjects.append(email.get("Subject"))  # 获取 Subject，并添加到 subjects 列表
+            bodies.append(email.get("Body"))  # 获取 Body，并添加到 bodies 列表
+
+    return dates, subjects, bodies  # 返回三个列表
+
+
+# 示例使用
+json_file_path = 'D:/NLP_email/data.json'  # 替换为你的 JSON 文件路径
+dates, subjects, bodies = extract_email_data(json_file_path)
 
 if __name__ == '__main__':
     # train()
@@ -139,4 +164,6 @@ if __name__ == '__main__':
         '''
     email3 = '你好老师，我今天可以请假一天吗'
     recognizer = RecognizerMail()
-    recognizer.predict([email1, email2, email3])
+    for i in bodies:
+        print(i)
+        recognizer.predict([i])

@@ -2,6 +2,20 @@ import datetime
 import threading
 import time
 import pickle
+import re
+import pandas as pd
+import matplotlib.pyplot as plt
+import jieba
+import re
+from Bayes.train_model import RecognizerMail,evaluate
+import json
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Conv1D, GlobalMaxPooling1D, Input
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from sklearn.utils import class_weight
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 import numpy as np
 from collections import Counter
 from sklearn.model_selection import train_test_split
@@ -27,6 +41,7 @@ import argparse
 import os
 import random
 import time
+import CNN_new2
 
 import numpy as np
 import paddle
@@ -42,12 +57,23 @@ from visualdl import LogWriter
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc, precision_recall_curve
 import matplotlib.pyplot as plt
 
+import imapclient
+import pyzmail
+import time
+import json
+import os
+from bs4 import BeautifulSoup
+import re
+
 evaluation_metrics_lock = threading.Lock()
 
-# 定义三个全局数组来存储邮件的主题、正文和 UID
-email_subjects = [] #主题
-email_bodies = [] #内容
-email_uids = []
+# 定义全局数组来存储获取的邮件和保存的邮件数据
+fetched_email_subjects = [] # 存储获取的邮件主题
+fetched_email_bodies = []   # 存储获取的邮件正文
+fetched_email_dates = []    # 存储获取的邮件日期
+saved_email_subjects = []   # 存储保存的邮件主题
+saved_email_bodies = []     # 存储保存的邮件正文
+saved_email_dates = []      # 存储保存的邮件日期
 
 evaluation_metrics = {
         "accuracy": 0,
@@ -56,6 +82,135 @@ evaluation_metrics = {
         "f1_score": 0,
         "confusion_matrix": [[0, 0], [0, 0]] # Example confusion matrix
     }
+
+def process_spam_detection(stopword_filepath, csv_filepath):
+    global training_progress
+    training_progress = 0
+    # 加载停用词
+    def load_stopwords(filepath):
+        with open(filepath, 'r', encoding='utf-8') as file:
+            return [line.strip() for line in file if line.strip()]
+
+    # 数据预处理函数
+    def textParse(text):
+        listOfTokens = jieba.lcut(text)
+        newList = [re.sub(r'\W*', '', s) for s in listOfTokens]
+        return [tok for tok in newList if len(tok) > 0]
+
+    def remove_stopwords(tokens, stopword_list):
+        return [token for token in tokens if token not in stopword_list]
+
+    def normalize_corpus(corpus, stopword_list):
+        return [' '.join(remove_stopwords(textParse(text), stopword_list)) for text in corpus]
+
+    # 读取CSV文件
+    df = pd.read_csv(csv_filepath)
+
+    # 去除标题为空的行
+    df = df[df['DecodedSubject'].astype(str) != '']
+
+    # 提取标题和标签
+    titles = df['DecodedSubject'].astype(str).values
+    labels = df['isSpam'].values
+
+    # 加载停用词
+    stopword_list = load_stopwords(stopword_filepath)
+
+    # 数据预处理
+    norm_titles = normalize_corpus(titles, stopword_list)
+
+    # 提取TF-IDF特征
+    tfidf_vectorizer = TfidfVectorizer(max_features=5000, min_df=2, ngram_range=(1, 2), norm='l2', smooth_idf=True, use_idf=True)
+    tfidf_features = tfidf_vectorizer.fit_transform(norm_titles)
+
+    # 将特征转换为适合 CNN 的形状 (样本数, 时间步, 特征数)
+    X = tfidf_features.toarray()
+    X = np.expand_dims(X, axis=1)  # 将数据转换为 (样本数, 1, 特征数)
+
+    # 划分训练集、验证集和测试集
+    X_train, X_temp, y_train, y_temp = train_test_split(X, labels, test_size=0.2, random_state=42)
+    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
+
+    # 计算类权重，处理数据不平衡问题
+    weights = class_weight.compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+
+    # CNN模型
+    def create_cnn_model(input_shape):
+        model = Sequential()
+        # 输入层
+        model.add(Input(shape=input_shape))
+        # 1D 卷积层 1
+        model.add(Conv1D(filters=64, kernel_size=1, activation='relu'))
+        # 最大池化层
+        model.add(GlobalMaxPooling1D())
+        # Dropout层防止过拟合
+        model.add(Dropout(0.5))
+        # 全连接层 1
+        model.add(Dense(64, activation='relu'))
+        # Dropout层
+        model.add(Dropout(0.5))
+        # 全连接层 2
+        model.add(Dense(32, activation='relu'))
+        # 输出层（二元分类，使用sigmoid激活函数）
+        model.add(Dense(1, activation='sigmoid'))
+        # 编译模型
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        return model
+
+    # 获取输入特征的形状
+    input_shape = (X_train.shape[1], X_train.shape[2])
+
+    # 创建CNN模型
+    model = create_cnn_model(input_shape)
+
+    # 模型保存路径和早停策略
+    checkpoint = ModelCheckpoint('best_model.weights.keras', monitor='val_loss', save_best_only=True, mode='min', verbose=1)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, mode='min', verbose=1)
+
+    # 将权重转换为字典格式
+    class_weights = {i: weights[i] for i in range(len(weights))}
+
+    # 模型训练
+    history = model.fit(X_train, y_train, epochs=20, batch_size=64, validation_data=(X_val, y_val),
+                        callbacks=[checkpoint, early_stopping], class_weight=class_weights)
+
+    # 加载最优模型权重
+    model.load_weights('best_model.weights.keras')
+
+    # 模型评估（在测试集上）
+    y_pred_prob = model.predict(X_test).flatten()
+    y_pred = np.where(y_pred_prob > 0.5, 1, 0)
+
+    # 评估模型的性能
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    conf_matrix = confusion_matrix(y_test, y_pred)
+    training_progress = 100
+    global evaluation_metrics
+    evaluation_metrics = {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "confusion_matrix": conf_matrix.tolist()
+    }
+
+    # 计算灵敏度和特异性
+    tn, fp, fn, tp = conf_matrix.ravel()
+    sensitivity = tp / (tp + fn)
+    specificity = tn / (tn + fp)
+
+    # 输出评估结果
+    print(f"准确率: {accuracy:.4f}")
+    print(f"查准率: {precision:.4f}")
+    print(f"召回率: {recall:.4f}")
+    print(f"F1值: {f1:.4f}")
+
+    # 输出混淆矩阵
+    print("混淆矩阵:")
+    print(conf_matrix.tolist())
 
 class SelfDefinedDataset(paddle.io.Dataset):
     def __init__(self, data):
@@ -674,15 +829,15 @@ def extract_emails():
     email_type = request.json['emailType']
 
     # 根据邮箱类型设置IMAP服务器
-    if email_type == 'qq':
-        imap_server = 'imap.qq.com'
-    elif email_type == '163':
-        imap_server = 'imap.163.com'
-    elif email_type == 'gmail':
-        imap_server = 'imap.gmail.com'
-    elif email_type == 'outlook':
-        imap_server = 'outlook.office.com'
-    else:
+    imap_servers = {
+        'qq': 'imap.qq.com',
+        '163': 'imap.163.com',
+        'gmail': 'imap.gmail.com',
+        'outlook': 'outlook.office.com'
+    }
+
+    imap_server = imap_servers.get(email_type)
+    if not imap_server:
         return jsonify({'error': '不支持的邮箱类型'})
 
     try:
@@ -703,24 +858,24 @@ def extract_emails():
         total_emails = len(UIDs)
 
         # 批量获取所有邮件的内容
-        raw_fetch_start = time.time()
         rawMessages = imapObj.fetch(UIDs, ['BODY[]', 'INTERNALDATE'])
-        raw_fetch_end = time.time()
-        print(f"从服务器获取原始邮件数据完成，耗时 {raw_fetch_end - raw_fetch_start:.2f} 秒。")
+        print("从服务器获取原始邮件数据完成。")
 
         # 安全地登出IMAP连接
         imapObj.logout()
 
-        # 使用线程池来并行处理邮件解析
-        parse_start = time.time()
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            emails = list(executor.map(lambda uid: parse_email(uid, rawMessages), UIDs))
-        parse_end = time.time()
-        print(f"解析原始邮件数据完成，耗时 {parse_end - parse_start:.2f} 秒。")
+        # 顺序处理邮件解析
+        emails = [parse_email(uid, rawMessages) for uid in UIDs]
+        print("解析原始邮件数据完成。")
+
+        # 保存获取的邮件主题、正文和日期
+        for email_info in emails:
+            fetched_email_subjects.append(email_info['subject'])
+            fetched_email_bodies.append(email_info['body'])
+            fetched_email_dates.append(email_info['date'])
 
         # 记录结束时间
-        end_time = time.time()
-        elapsed_time = end_time - start_time
+        elapsed_time = time.time() - start_time
         print(f"邮件获取和处理完成，总耗时 {elapsed_time:.2f} 秒。")
 
         return jsonify({'emails': emails, 'totalEmails': total_emails})
@@ -736,28 +891,26 @@ def parse_email(uid, rawMessages):
         data = rawMessages[uid]
         message = pyzmail.PyzMessage.factory(data[b'BODY[]'])
 
-        # 获取邮件正文
+        # 获取邮件正文和HTML内容
+        # email_body = None
+        # if message.text_part:
+        #     email_body = message.text_part.get_payload().decode(errors='replace')
+        # elif message.html_part:
+        #     email_body = message.html_part.get_payload().decode(errors='replace')
+        # else:
+        #     email_body = "无正文内容"
+
+        # 获取邮件正文和HTML内容
         email_body = None
         if message.text_part:
-            raw_payload = message.text_part.get_payload()
-            detected = chardet.detect(raw_payload)
-            charset = detected['encoding'] if detected['encoding'] else 'utf-8'
-            try:
-                email_body = raw_payload.decode(charset, errors='replace')
-            except Exception as e:
-                print(f"Text part decoding failed: {str(e)}")
-                email_body = "无法解码的文本内容"
+            # 保留文本部分的排版和换行符
+            email_body = message.text_part.get_payload().decode(errors='replace')
+            email_body = email_body.replace('\n', '<br>')  # 保留换行符，在前端显示时正确显示
         elif message.html_part:
-            raw_payload = message.html_part.get_payload()
-            detected = chardet.detect(raw_payload)
-            charset = detected['encoding'] if detected['encoding'] else 'utf-8'
-            try:
-                email_body = raw_payload.decode(charset, errors='replace')
-            except Exception as e:
-                print(f"HTML part decoding failed: {str(e)}")
-                email_body = "无法解码的HTML内容"
+            # 如果是HTML部分，保留HTML内容
+            email_body = message.html_part.get_payload().decode(errors='replace')
         else:
-            email_body = "此邮件没有文本或HTML部分"
+            email_body = "无正文内容"
 
         # 构造邮件信息
         email_info = {
@@ -780,40 +933,52 @@ def parse_email(uid, rawMessages):
 
 @app.route('/save_emails', methods=['POST'])
 def save_emails():
-    global email_subjects, email_bodies, email_uids
+    global saved_email_subjects, saved_email_bodies, saved_email_dates
 
     # 获取从前端传来的邮件数据
     emails = request.json['emails']
-    uids = request.json['uids']
 
-    # 清空之前存储的邮件数据
-    email_subjects.clear()
-    email_bodies.clear()
-    email_uids.clear()
+    # 清空之前存储的保存邮件数据
+    saved_email_subjects.clear()
+    saved_email_bodies.clear()
+    saved_email_dates.clear()
 
-    # 保存邮件的主题、正文和 UID 到全局数组
-    for email, uid in zip(emails, uids):
-        email_subjects.append(email['subject'])
-        email_bodies.append(email['body'])
-        email_uids.append(uid)
+    # 保存邮件的主题、正文和日期到全局数组
+    for email in emails:
+        saved_email_subjects.append(email['subject'])
+        # 如果是HTML内容，提取其中的正文部分
+        if '<html' in email['body']:
+            soup = BeautifulSoup(email['body'], 'html.parser')
+            cleaned_body = soup.get_text(separator=' ', strip=True)
+        else:
+            cleaned_body = email['body']
 
-    # 保存邮件数据到 CSV 文件
-    save_emails_to_csv()
+        # 去除正文中的多余换行、空格、HTML实体符号（如&nbsp;、&gt;、&quot; 等）
+        cleaned_body = re.sub(r'\s+|&nbsp;|&gt;|&quot;|&lt;|<br>', '', cleaned_body).strip()
 
-    return jsonify({'message': '邮件主题、正文和 UID 已成功保存到服务器，并存储到文件中'})
+        # 使用更精细的正则表达式删除原始邮件内容，仅保留他人的回复部分
+        cleaned_body = re.split(
+            r'(?i)(----回复的原邮件----|-----原始邮件-----|发件人:.*|On .*? wrote:|From:.*|Sent:.*|Subject:.*|---原始邮件---)',
+            cleaned_body)[0]
 
-def save_emails_to_csv():
-    # 如果文件不存在，则创建文件并写入表头
-    if not os.path.exists('./data.csv'):
-        with open('./data.csv', mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(['UID', 'Subject', 'Body'])
+        saved_email_bodies.append(cleaned_body)
+        saved_email_dates.append(email['date'])
 
-    # 写入邮件数据
-    with open('./data.csv', mode='a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        for uid, subject, body in zip(email_uids, email_subjects, email_bodies):
-            writer.writerow([uid, subject, body])
+    print("saved_email_bodies:",saved_email_bodies)
+
+    # 保存邮件数据到 JSON 文件
+    save_emails_to_json()
+
+    return jsonify({'message': '邮件主题、正文和日期已成功保存到服务器，并存储到文件中'})
+
+
+def save_emails_to_json():
+    emails_data = []
+    for date, subject, body in zip(saved_email_dates, saved_email_subjects, saved_email_bodies):
+        emails_data.append({'Date': date, 'Subject': subject, 'Body': body})
+
+    with open('./data.json', 'w', encoding='utf-8') as file:
+        json.dump(emails_data, file, ensure_ascii=False, indent=4)
 
 
 # Global variable to track training progress
@@ -822,9 +987,7 @@ training_progress = 0
 def train_cnn():
     global training_progress
     print("Training CNN")
-    for i in range(1, 101):  # Simulating progress from 0% to 100%
-        time.sleep(0.1)  # Simulate time taken for training
-        training_progress = i
+    process_spam_detection('stop_words.txt', 'mailChinese_header1.csv')
 
 def train_electra():
     global training_progress
@@ -1013,6 +1176,251 @@ def get_evaluation_metrics():
     with evaluation_metrics_lock:
         print(evaluation_metrics)
         return jsonify(evaluation_metrics)
+
+
+def prediction_result():
+    prediction = None
+    if request.method == 'POST':
+        input_text = request.form['input_text']
+        prediction = predict(input_text)
+    return render_template('index.html', prediction=prediction)
+@app.route('/submit_spam', methods=['POST'])
+def submit_spam():
+    file = request.files.get('file')
+
+    if file and file.filename.endswith('.json'):
+        # 将JSON文件读入pandas DataFrame
+        data = json.load(file)  # 直接使用上传的文件
+        df = pd.json_normalize(data)  # 将数据转换为DataFrame
+
+        # 提取第三列（索引为2）并转换为列表
+        input_text = df.iloc[:, 2].tolist()  # 获取第三列
+        data = input_text
+    else:
+        # 如果未提供文件，从表单中获取input_text
+        input_text = request.form.get('input_text')
+        data = [input_text]
+    # 将文本和文件内容合并或单独处理
+    # prediction = your_model.predict(input_text or file_content)
+    print('input:',input_text)
+    # 调用ppnlp.transformers.BertTokenizer进行数据处理，tokenizer可以把原始输入文本转化成模型model可接受的输入数据格式。
+    tokenizer = ppnlp.transformers.BertTokenizer.from_pretrained("bert-base-chinese")
+    # 加载预训练模型Bert用于文本分类任务的Fine-tune网络BertForSequenceClassification, 它在BERT模型后接了一个全连接层进行分类。
+    # 由于本任务中的垃圾邮件识别是二分类问题，设定num_classes为2
+    model2 = ppnlp.transformers.BertForSequenceClassification.from_pretrained("bert-base-chinese", num_classes=2)
+    print('模型已载入')
+    params_path = 'saved_models/model_epoch3.pdparams'
+    state_dict = paddle.load(params_path)
+    model2.set_state_dict(state_dict)
+
+    label_map = {0: '垃圾邮件', 1: '正常邮件'}
+    predictions = predict(model2, data, tokenizer, label_map, batch_size=32)
+    results=[]
+    for idx, text in enumerate(data):
+        print('预测内容: {} \n邮件标签: {}'.format(text, predictions[idx]))
+        results.append({
+            "content": text,
+            "label": predictions[idx]
+        })
+
+    return jsonify({'prediction': results,'input_text':input_text})
+@app.route('/submit_spam_title', methods=['POST'])
+def submit_spam_title():
+    recognizer = RecognizerMail()
+
+    file = request.files.get('email_file')
+
+    if file and file.filename.endswith('.json'):
+        # 将JSON文件读入pandas DataFrame
+        data = json.load(file)  # 直接使用上传的文件
+        df = pd.json_normalize(data)  # 将数据转换为DataFrame
+
+        # 提取第三列（索引为2）并转换为列表
+        input_text = df.iloc[:, 1].tolist()  # 获取第三列
+        print('input2', input_text)
+        predictions = recognizer.predict(input_text)
+    else:
+        # 如果未提供文件，从表单中获取input_text
+        input_text = request.form.get('email_subject')
+        input_text = [input_text]
+        print('input1', input_text)
+
+        predictions=recognizer.predict( input_text)
+    # 将文本和文件内容合并或单独处理
+    # prediction = your_model.predict(input_text or file_content)
+    results = []
+    for idx, text in enumerate(input_text):
+        print('预测内容: {} \n邮件标签: {}'.format(text, predictions[idx]))
+        results.append({
+            "content": text,
+            "label": predictions[idx]
+        })
+
+    return jsonify({'prediction': results, 'input_text': input_text})
+
+
+@app.route('/submit_spam_CNN', methods=['POST'])
+def submit_spam_cnn():
+    print('CNN')
+    file = request.files.get('file')
+
+    if file and file.filename.endswith('.json'):
+        # 将JSON文件读入pandas DataFrame
+        data = json.load(file)  # 直接使用上传的文件
+        df = pd.json_normalize(data)  # 将数据转换为DataFrame
+
+        # 提取第三列（索引为2）并转换为列表
+        input_text = df.iloc[:, 2].tolist()  # 获取第三列
+
+    else:
+        # 如果未提供文件，从表单中获取input_text
+        input_text = request.form.get('input_text')
+        input_text=[input_text]
+
+    title = input_text
+    stopword_list = CNN_new2.load_stopwords('stop_words.txt')
+    # 读取CSV文件
+    df = pd.read_csv('mailChinese_header1.csv')
+
+    # 提取标题和标签
+    titles = df['DecodedSubject'].astype(str).values
+    labels = df['isSpam'].values
+
+    # 数据预处理
+    norm_titles = CNN_new2.normalize_corpus(titles, stopword_list)
+
+    # 提取TF-IDF特征
+    tfidf_vectorizer = CNN_new2.TfidfVectorizer(max_features=5000, min_df=2, ngram_range=(1, 2), norm='l2', smooth_idf=True,
+                                       use_idf=True)
+    tfidf_features = tfidf_vectorizer.fit_transform(norm_titles)
+
+    # 将特征转换为适合 CNN 的形状 (样本数, 时间步, 特征数)
+    X = tfidf_features.toarray()
+    X = np.expand_dims(X, axis=1)  # 将数据转换为 (样本数, 1, 特征数)
+
+    # 划分训练集和测试集
+    X_train, X_test, y_train, y_test = CNN_new2.train_test_split(X, labels, test_size=0.4, random_state=42)
+
+    # 计算类权重，处理数据不平衡问题
+    weights = CNN_new2.class_weight.compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+    input_shape = (X_train.shape[1], X_train.shape[2])
+
+
+    # 创建CNN模型
+    model = CNN_new2.create_cnn_model(input_shape)
+    predictions=[]
+    for title in input_text:
+        prediction = CNN_new2.predict_spam(title, model, tfidf_vectorizer, stopword_list)
+        predictions.append(prediction)
+    print(f"标题: '{title}' 被预测为: {predictions}")
+    results = []
+    for idx, text in enumerate(input_text):
+        print('预测内容: {} \n邮件标签: {}'.format(text, predictions[idx]))
+        results.append({
+            "content": text,
+            "label": predictions[idx]
+        })
+    return jsonify({'prediction': results, 'input_text': input_text})
+
+@app.route('/submit_spam_c_e', methods=['POST'])
+def submit_spam_c_e():
+    print('submit_spam_c_e')
+    params_path = "./model_360/model_state.pdparams"  # 替换为实际路径
+    max_seq_length = 16
+    batch_size = 32
+    device = "cpu"  # 可选 'cpu', 'gpu', 'xpu'
+
+    file = request.files.get('email_file')
+    if file and file.filename.endswith('.json'):
+        # 将JSON文件读入pandas DataFrame
+        print('input11:')
+        data = json.load(file)  # 直接使用上传的文件
+        df = pd.json_normalize(data)  # 将数据转换为DataFrame
+
+        # 提取第三列（索引为2）并转换为列表
+        input_text = df.iloc[:, 1].tolist()  # 获取第三列
+        print('input:',input_text)
+        data = input_text
+    else:
+        # 如果未提供文件，从表单中获取input_text
+        input_text = request.form.get('email_subject')
+        print('input2:', input_text)
+        data = [input_text]
+    tokenizer = ppnlp.transformers.ElectraTokenizer.from_pretrained('chinese-electra-small')
+    label_map = {0: '垃圾邮件', 1: '正常邮件'}
+
+    model = ppnlp.transformers.ElectraForSequenceClassification.from_pretrained('chinese-electra-small',
+                                                                                num_classes=len(label_map))
+
+    if params_path and os.path.isfile(params_path):
+        state_dict = paddle.load(params_path)
+        model.set_dict(state_dict)
+        print("Loaded parameters from %s" % params_path)
+    predictions = predict(
+        model, data, tokenizer, label_map, batch_size=batch_size)
+    results = []
+    for idx, text in enumerate(data):
+        print('预测内容: {} \n邮件标签: {}'.format(text, predictions[idx]))
+        results.append({
+            "content": text,
+            "label": predictions[idx]
+        })
+
+    return jsonify({'prediction': results, 'input_text': input_text})
+
+
+def convert_example_bert(example,tokenizer,label_list,max_seq_length=256,is_test=False):
+    if is_test:
+        text = example
+    else:
+        text, label = example
+    #tokenizer.encode方法能够完成切分token，映射token ID以及拼接特殊token
+    encoded_inputs = tokenizer.encode(text=text, max_seq_len=max_seq_length)
+    input_ids = encoded_inputs["input_ids"]
+    #注意，在早前的PaddleNLP版本中，token_type_ids叫做segment_ids
+    segment_ids = encoded_inputs["token_type_ids"]
+
+    if not is_test:
+        label_map = {}
+        for (i, l) in enumerate(label_list):
+            label_map[l] = i
+
+        label = label_map[label]
+        label = np.array([label], dtype="int64")
+        return input_ids, segment_ids, label
+    else:
+        return input_ids, segment_ids
+
+def predict(model, data, tokenizer, label_map, batch_size=1):
+    examples = []
+    for text in data:
+        input_ids, segment_ids = convert_example_bert(text, tokenizer, label_list=label_map.values(),  max_seq_length=128, is_test=True)
+        examples.append((input_ids, segment_ids))
+
+    batchify_fn = lambda samples, fn=Tuple(Pad(axis=0, pad_val=tokenizer.pad_token_id), Pad(axis=0, pad_val=tokenizer.pad_token_id)): fn(samples)
+    batches = []
+    one_batch = []
+    for example in examples:
+        one_batch.append(example)
+        if len(one_batch) == batch_size:
+            batches.append(one_batch)
+            one_batch = []
+    if one_batch:
+        batches.append(one_batch)
+
+    results = []
+    model.eval()
+    for batch in batches:
+        input_ids, segment_ids = batchify_fn(batch)
+        input_ids = paddle.to_tensor(input_ids)
+        segment_ids = paddle.to_tensor(segment_ids)
+        logits = model(input_ids, segment_ids)
+        probs = F.softmax(logits, axis=1)
+        idx = paddle.argmax(probs, axis=1).numpy()
+        idx = idx.tolist()
+        labels = [label_map[i] for i in idx]
+        results.extend(labels)
+    return results
 
 
 
