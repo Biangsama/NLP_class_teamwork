@@ -202,14 +202,14 @@
             <label for="select1">选择模型:</label><br>
             <select name="select1" id="select1">
                 <option value="option1">Bert</option>
-                <option value="option2">CNN</option>
+                <option value="option2">贝叶斯</option>
             </select><br><br>
         </div>
 
         <div class="form-group">
             <label for="select2">选择模型:</label><br>
             <select name="select2" id="select2">
-                <option value="option1">贝叶斯</option>
+                <option value="option1">CNN</option>
                 <option value="option2">chinese-electra</option>
             </select><br><br>
         </div>
@@ -242,7 +242,7 @@ document.getElementById('submitBtn1').addEventListener('click', function(event) 
     submitSpamForm(event, 'select1'); // 传递事件和选择框ID
 });
 document.getElementById('submitBtn2').addEventListener('click', function(event) {
-    submitSpamForm2(event,'select2'); // 只传递事件
+    submitSpamForm2(event,'select2'); // 只传递事件？
 });
 
 function submitSpamForm(event, selectId) {
@@ -274,7 +274,7 @@ function submitSpamForm(event, selectId) {
             console.error('Error:', error);
         });
     } else if (selectedValue === "option2") {
-        fetch('/submit_spam_CNN', {
+        fetch('/submit_spam_title', {
             method: 'POST',
             body: formData
         })
