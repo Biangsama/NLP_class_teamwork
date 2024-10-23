@@ -66,10 +66,25 @@ def bert_split_data_to_train():
     print("验证集数据:{}\n".format(dev_ds[0:3]))
     print("测试集数据:{}\n".format(test_ds[0:3]))
     # 看看数据长什么样子，分别打印训练集、验证集、测试集的前3条数据。
+    print(train_ds)
 
     print("训练集样本个数:{}".format(len(train_ds)))
     print("验证集样本个数:{}".format(len(dev_ds)))
     print("测试集样本个数:{}".format(len(test_ds)))
+
+    # 数据迭代器构造方法
+    def create_dataloader_bert(dataset, trans_fn=None, mode='train', batch_size=1, use_gpu=True, pad_token_id=0,
+                               batchify_fn=None):
+        if trans_fn:
+            dataset = dataset.map(trans_fn, lazy=True)
+
+        if mode == 'train' and use_gpu:
+            sampler = paddle.io.DistributedBatchSampler(dataset=dataset, batch_size=batch_size, shuffle=True)
+        else:
+            shuffle = True if mode == 'train' else False  # 如果不是训练集，则不打乱顺序
+            sampler = paddle.io.BatchSampler(dataset=dataset, batch_size=batch_size, shuffle=shuffle)  # 生成一个取样器
+        dataloader = paddle.io.DataLoader(dataset, batch_sampler=sampler, return_list=True, collate_fn=batchify_fn)
+        return dataloader
 
     def convert_example(example, tokenizer, label_list, max_seq_length=256, is_test=False):
         if is_test:
@@ -92,14 +107,20 @@ def bert_split_data_to_train():
             return input_ids, segment_ids, label
         else:
             return input_ids, segment_ids
+
+
     # 调用ppnlp.transformers.BertTokenizer进行数据处理，tokenizer可以把原始输入文本转化成模型model可接受的输入数据格式。
     tokenizer = ppnlp.transformers.BertTokenizer.from_pretrained("bert-base-chinese",truncation=True)
     # 使用partial()来固定convert_example函数的tokenizer, label_list, max_seq_length, is_test等参数值
+    #数据转换函数:
     trans_fn = partial(convert_example, tokenizer=tokenizer, label_list=label_list, max_seq_length=128, is_test=False)
+    #批量处理函数
     batchify_fn = lambda samples, fn=Tuple(Pad(axis=0, pad_val=tokenizer.pad_token_id),
                                            Pad(axis=0, pad_val=tokenizer.pad_token_id), Stack(dtype="int64")): [data for
                                                                                                                 data in
                                                                                                                 fn(samples)]
+    #词token id 和句子关系的段token进行填充
+
     # 训练集迭代器
     train_loader = create_dataloader_bert(train_ds, mode='train', batch_size=64, batchify_fn=batchify_fn, trans_fn=trans_fn)
     # 验证集迭代器
@@ -257,6 +278,110 @@ def create_dataloader_bert(dataset, trans_fn=None, mode='train', batch_size=1, u
     return dataloader
 
 
-#数据预处理
+# #数据预处理
+# trainlst = txt_to_list('train_list_2.txt')
+# devlst = txt_to_list('eval_list_2.txt')
+# testlst = txt_to_list('test_list_2.txt')
+# print(type(trainlst))
+#
+# train_ds = SelfDefinedDataset(trainlst)
+# dev_ds = SelfDefinedDataset(devlst)
+# test_ds = SelfDefinedDataset(testlst)
+# label_list = train_ds.get_labels()
+# print(label_list)
+# from paddlenlp.datasets import MapDataset
+# train_ds = MapDataset(train_ds)
+# dev_ds = MapDataset(dev_ds)
+# test_ds = MapDataset(test_ds)
+# print("训练集数据：{}\n".format(train_ds[0:3]))
+# print("验证集数据:{}\n".format(dev_ds[0:3]))
+# print("测试集数据:{}\n".format(test_ds[0:3]))
+# # 看看数据长什么样子，分别打印训练集、验证集、测试集的前3条数据。
+# print("训练集样本个数:{}".format(len(train_ds)))
+# print("验证集样本个数:{}".format(len(dev_ds)))
+# print("测试集样本个数:{}".format(len(test_ds)))
+#
+# #一个样本的形式是['文本','标签']
+# # for i in range(500):
+# #     print(len(train_ds[i][0]))
+# #可以看出最长是200
 
-bert_split_data_to_train()
+
+#bert_split_data_to_train()
+
+trainlst = txt_to_list('train_list_2.txt')
+devlst = txt_to_list('eval_list_2.txt')
+testlst = txt_to_list('test_list_2.txt')
+
+train_ds = SelfDefinedDataset(trainlst)
+dev_ds = SelfDefinedDataset(devlst)
+test_ds = SelfDefinedDataset(testlst)
+label_list = train_ds.get_labels()
+print(label_list)
+from paddlenlp.datasets import MapDataset
+
+train_ds = MapDataset(train_ds)
+dev_ds = MapDataset(dev_ds)
+test_ds = MapDataset(test_ds)
+print("训练集数据：{}\n".format(train_ds[0:3]))
+print("验证集数据:{}\n".format(dev_ds[0:3]))
+print("测试集数据:{}\n".format(test_ds[0:3]))
+# 看看数据长什么样子，分别打印训练集、验证集、测试集的前3条数据。
+print(train_ds)
+
+print("训练集样本个数:{}".format(len(train_ds)))
+print("验证集样本个数:{}".format(len(dev_ds)))
+print("测试集样本个数:{}".format(len(test_ds)))
+# 数据迭代器构造方法
+def create_dataloader_bert(dataset, trans_fn=None, mode='train', batch_size=1, use_gpu=True, pad_token_id=0,
+                           batchify_fn=None):
+    if trans_fn:
+        dataset = dataset.map(trans_fn, lazy=True)
+
+    if mode == 'train' and use_gpu:
+            sampler = paddle.io.DistributedBatchSampler(dataset=dataset, batch_size=batch_size, shuffle=True)
+    else:
+        shuffle = True if mode == 'train' else False  # 如果不是训练集，则不打乱顺序
+        sampler = paddle.io.BatchSampler(dataset=dataset, batch_size=batch_size, shuffle=shuffle)  # 生成一个取样器
+    dataloader = paddle.io.DataLoader(dataset, batch_sampler=sampler, return_list=True, collate_fn=batchify_fn)
+    return dataloader
+
+def convert_example(example, tokenizer, label_list, max_seq_length=256, is_test=False):
+    if is_test:
+        text = example
+    else:
+        text, label = example
+    # tokenizer.encode方法能够完成切分token，映射token ID以及拼接特殊token
+    encoded_inputs = tokenizer.encode(text=text, max_seq_len=max_seq_length)
+    input_ids = encoded_inputs["input_ids"]
+    # 注意，在早前的PaddleNLP版本中，token_type_ids叫做segment_ids
+    segment_ids = encoded_inputs["token_type_ids"]
+
+    if not is_test:
+        label_map = {}
+        for (i, l) in enumerate(label_list):
+            label_map[l] = i
+
+        label = label_map[label]
+        label = np.array([label], dtype="int64")
+        return input_ids, segment_ids, label
+    else:
+        return input_ids, segment_ids
+
+
+# 调用ppnlp.transformers.BertTokenizer进行数据处理，tokenizer可以把原始输入文本转化成模型model可接受的输入数据格式。
+tokenizer = ppnlp.transformers.BertTokenizer.from_pretrained("bert-base-chinese",truncation=True)
+# 使用partial()来固定convert_example函数的tokenizer, label_list, max_seq_length, is_test等参数值
+#数据转换函数:
+trans_fn = partial(convert_example, tokenizer=tokenizer, label_list=label_list, max_seq_length=128, is_test=False)
+#批量处理函数
+batchify_fn = lambda samples, fn=Tuple(Pad(axis=0, pad_val=tokenizer.pad_token_id),Pad(axis=0, pad_val=tokenizer.pad_token_id), Stack(dtype="int64")): [data for data in fn(samples)]
+#词token id 和句子关系的段token进行填充
+# 训练集迭代器
+train_loader = create_dataloader_bert(train_ds, mode='train', batch_size=64, batchify_fn=batchify_fn, trans_fn=trans_fn)
+
+print(type(train_loader))
+# 验证集迭代器
+# dev_loader = create_dataloader_bert(dev_ds, mode='dev', batch_size=64, batchify_fn=batchify_fn, trans_fn=trans_fn)
+# # 测试集迭代器
+# test_loader = create_dataloader_bert(test_ds, mode='test', batch_size=64, batchify_fn=batchify_fn, trans_fn=trans_fn)
